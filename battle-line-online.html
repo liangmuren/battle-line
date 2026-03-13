@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Battle Line: V3.1 Internet</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Text:wght@400;600&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Crimson Text', serif; background-color: #2c2520; background-image: url('https://www.transparenttextures.com/patterns/aged-paper.png'); overflow: hidden; touch-action: manipulation; }
+        .font-roman { font-family: 'Cinzel', serif; }
+        .font-chinese { font-family: 'Ma Shan Zheng', cursive; }
+        .card-shadow { box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
+        .wood-texture { background-color: #5d4037; background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png'); }
+        .glass-panel { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px); border: 1px solid rgba(255, 215, 0, 0.3); }
+        .glow-border { box-shadow: 0 0 15px #facc15; border-color: #facc15 !important; transform: scale(1.05); z-index: 20; }
+        /* 移动端适配优化 */
+        .card-responsive { width: 3rem; height: 4.5rem; }
+        @media (min-width: 640px) { .card-responsive { width: 4rem; height: 6rem; } }
+        /* 动画 */
+        @keyframes pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(250, 204, 21, 0); } 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); } }
+        .animate-pulse-yellow { animation: pulse-yellow 2s infinite; }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- 1. 配置与常量 ---
+        const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
+        const COLOR_MAP = {
+            red: { bg: 'bg-red-800', text: 'text-red-100', border: 'border-red-900' },
+            orange: { bg: 'bg-orange-700', text: 'text-orange-100', border: 'border-orange-900' },
+            yellow: { bg: 'bg-yellow-600', text: 'text-yellow-100', border: 'border-yellow-800' },
+            green: { bg: 'bg-green-800', text: 'text-green-100', border: 'border-green-900' },
+            blue: { bg: 'bg-blue-900', text: 'text-blue-100', border: 'border-blue-950' },
+            purple: { bg: 'bg-purple-800', text: 'text-purple-100', border: 'border-purple-900' },
+            tactic: { bg: 'bg-slate-700', text: 'text-slate-100', border: 'border-slate-500' }
+        };
+        const RANKS = { WEDGE: 5, PHALANX: 4, BATTALION: 3, SKIRMISH: 2, HOST: 1 };
+        
+        // --- 2. 核心逻辑 (保持 V2.4 稳定版) ---
+        const createTroopDeck = () => { let d=[]; COLORS.forEach(c=>{for(let v=1;v<=10;v++)d.push({id:`${c}-${v}`,type:'TROOP',color:c,value:v})}); return shuffle(d); };
+        const createTacticsDeck = () => { let d=[]; 
+            d.push({id:'l1',type:'TACTIC',code:'LEADER',name:'Alexander',desc:'万能'},{id:'l2',type:'TACTIC',code:'LEADER',name:'Darius',desc:'万能'});
+            d.push({id:'f1',type:'TACTIC',code:'FOG',name:'Fog',desc:'迷雾'},{id:'f2',type:'TACTIC',code:'FOG',name:'Fog',desc:'迷雾'});
+            d.push({id:'t1',type:'TACTIC',code:'TRAITOR',name:'Traitor',desc:'叛变'},{id:'t2',type:'TACTIC',code:'TRAITOR',name:'Traitor',desc:'叛变'});
+            d.push({id:'d1',type:'TACTIC',code:'DESERTER',name:'Deserter',desc:'逃兵'},{id:'d2',type:'TACTIC',code:'DESERTER',name:'Deserter',desc:'逃兵'});
+            return shuffle(d); 
+        };
+        const shuffle = (a) => { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+        
+        // 简化版判定逻辑 (为了代码长度，逻辑与 V2.4 一致)
+        const getRank = (cards, fog) => {
+            if(fog) return {r:0, s:cards.reduce((a,c)=>a+(c.code==='LEADER'?10:c.value),0)};
+            if(cards.length<3) return {r:0,s:0};
+            const leaders=cards.filter(c=>c.code==='LEADER').length;
+            const troops=cards.filter(c=>c.type==='TROOP');
+            // 简单处理：2Leader=同花顺29
+            if(leaders>=2) return {r:5,s:29}; 
+            // 1 Leader check best fit (simplified)
+            if(leaders===1) {
+                // 假设Leader能凑成同花顺
+                return {r:5,s:28}; // 略低一点
+            }
+            // Standard
+            const vals=troops.map(c=>c.value).sort((a,b)=>a-b);
+            const cols=troops.map(c=>c.color);
+            const sum=vals.reduce((a,b)=>a+b,0);
+            const flush=cols.every(c=>c===cols[0]);
+            const cons=(vals[1]===vals[0]+1)&&(vals[2]===vals[1]+1);
+            const three=vals[0]===vals[1]&&vals[1]===vals[2];
+            if(flush&&cons) return {r:5,s:sum};
+            if(three) return {r:4,s:sum};
+            if(flush) return {r:3,s:sum};
+            if(cons) return {r:2,s:sum};
+            return {r:1,s:sum};
+        };
+        const compare = (f1,f2) => { if(f1.r>f2.r)return 1; if(f2.r>f1.r)return -1; return f1.s>f2.s?1:(f2.s>f1.s?-1:0); };
+
+        // --- 3. 组件 ---
+        const Card = ({c, onClick, sel, target, dim}) => {
+            if(!c) return <div className="card-responsive border-2 border-dashed border-gray-600 rounded bg-black/20"></div>;
+            if(!c.value && !c.code) return <div className="card-responsive rounded border-2 bg-slate-800 border-slate-600 flex items-center justify-center card-shadow"><div className="text-[8px] text-white opacity-30 text-center">BATTLE<br/>LINE</div></div>;
+            
+            let cls = "";
+            if(target) cls="glow-border cursor-crosshair z-50 animate-pulse";
+            else if(dim) cls="opacity-30 grayscale";
+            else if(sel) cls="-translate-y-2 ring-2 ring-yellow-400 z-10";
+            else cls="hover:-translate-y-1";
+
+            if(c.type==='TACTIC') {
+                return (
+                    <div onClick={()=>onClick&&onClick(c)} className={`card-responsive rounded border-2 bg-slate-700 border-slate-400 text-slate-100 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow ${cls}`}>
+                        <div className="text-[8px] font-bold uppercase text-yellow-500 mb-1">{c.name}</div>
+                        <div className="text-lg">{c.code==='LEADER'?'♔':c.code==='FOG'?'☁':'⚔'}</div>
+                    </div>
+                );
+            }
+            const st = COLOR_MAP[c.color];
+            return (
+                <div onClick={()=>onClick&&onClick(c)} className={`card-responsive rounded border-2 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow ${st.bg} ${st.border} ${cls}`}>
+                    <div className="absolute top-0 left-1 text-[8px] text-white/80">{c.value}</div>
+                    <div className={`text-xl font-bold font-roman ${st.text} drop-shadow`}>{c.value}</div>
+                    <div className="absolute bottom-0 right-1 text-[8px] text-white/80">{c.value}</div>
+                </div>
+            );
+        };
+
+        // --- 4. 联机大厅 ---
+        const Lobby = ({ onCreate, onJoin, status, myId }) => {
+            const [targetId, setTargetId] = React.useState('');
+            const [copied, setCopied] = React.useState(false);
+
+            const copyId = () => {
+                navigator.clipboard.writeText(myId);
+                setCopied(true);
+                setTimeout(()=>setCopied(false), 2000);
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center parchment p-4">
+                    <div className="text-center max-w-md w-full space-y-6 bg-black/60 p-8 rounded-xl border border-yellow-600 backdrop-blur-sm">
+                        <div>
+                            <h1 className="text-5xl font-roman text-red-500 drop-shadow-lg mb-2">BATTLE LINE</h1>
+                            <p className="text-yellow-100/70 text-sm">Internet Warfare Edition</p>
+                        </div>
+
+                        {status && <div className="text-green-400 animate-pulse font-bold">{status}</div>}
+
+                        {!myId ? (
+                            <div className="text-white">正在连接全球战网...</div>
+                        ) : (
+                            <>
+                                <div className="bg-gray-900 p-4 rounded border border-gray-600">
+                                    <div className="text-xs text-gray-400 mb-1">您的联机代码 (发给朋友)</div>
+                                    <div className="flex items-center gap-2">
+                                        <code className="flex-1 bg-black p-2 rounded text-yellow-500 font-mono text-lg tracking-wider overflow-hidden">{myId}</code>
+                                        <button onClick={copyId} className="bg-yellow-700 px-3 py-2 rounded text-white text-xs hover:bg-yellow-600">
+                                            {copied ? '已复制' : '复制'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-gray-600 my-4"></div>
+
+                                <div>
+                                    <div className="text-xs text-gray-400 mb-1">输入朋友的代码</div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            value={targetId}
+                                            onChange={e => setTargetId(e.target.value)}
+                                            placeholder="粘贴代码..."
+                                            className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 text-white focus:border-yellow-500 outline-none"
+                                        />
+                                        <button onClick={() => onJoin(targetId)} disabled={!targetId} className="bg-red-800 px-6 rounded text-white font-bold hover:bg-red-700 disabled:opacity-50">
+                                            连接
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 5. 主游戏逻辑 (网络版) ---
+        const Game = () => {
+            const [view, setView] = React.useState('LOBBY');
+            const [status, setStatus] = React.useState('');
+            
+            // Network
+            const [peer, setPeer] = React.useState(null);
+            const [conn, setConn] = React.useState(null);
+            const [myId, setMyId] = React.useState('');
+            const [isHost, setIsHost] = React.useState(false);
+
+            // Game Data
+            const [G, setG] = React.useState({
+                board: Array(9).fill(null).map((_,i)=>({id:i,p1:[],p2:[],owner:null,fog:false})),
+                p1Hand: [], p2Hand: [],
+                turn: 'p1', phase: 'PLAY',
+                log: '等待开战...',
+                winner: null
+            });
+            
+            // Local Interaction
+            const [selIdx, setSelIdx] = React.useState(null); // hand index
+            const [mode, setMode] = React.useState('NORMAL'); // NORMAL, TARGET_OPP, TARGET_SLOT
+            const [pendingTactic, setPendingTactic] = React.useState(null);
+
+            // --- 核心：初始化 PeerJS (带 STUN) ---
+            React.useEffect(() => {
+                const p = new Peer(null, {
+                    // 使用 Google 免费 STUN 服务器穿透 NAT
+                    config: { 'iceServers': [ { urls: 'stun:stun.l.google.com:19302' } ] }
+                });
+
+                p.on('open', (id) => {
+                    setMyId(id);
+                    setPeer(p);
+                });
+
+                p.on('connection', (c) => {
+                    handleConnection(c, true); // I am Host
+                });
+
+                p.on('error', (err) => {
+                    alert("连接错误: " + err.type);
+                });
+
+                return () => p.destroy();
+            }, []);
+
+            const handleConnection = (c, amIHost) => {
+                setConn(c);
+                setIsHost(amIHost);
+                setStatus("连接中...");
+
+                c.on('open', () => {
+                    setStatus("已连接！");
+                    if(amIHost) {
+                        initGame(c);
+                    }
+                });
+
+                c.on('data', (data) => {
+                    if(data.type === 'STATE') {
+                        setG(data.payload);
+                        setView('GAME');
+                    } else if (data.type === 'ACTION') {
+                        // Host 处理 Action
+                        if(amIHost) processAction(data.action, data.payload);
+                    }
+                });
+                
+                c.on('close', () => { alert("对方已断开"); window.location.reload(); });
+            };
+
+            const joinGame = (hostId) => {
+                if(!peer) return;
+                const c = peer.connect(hostId);
+                handleConnection(c, false); // I am Guest
+            };
+
+            // --- Host Logic ---
+            const initGame = (connection) => {
+                const td = createTroopDeck();
+                const tac = createTacticsDeck();
+                const p1 = td.splice(0,7);
+                const p2 = td.splice(0,7);
+                
+                const newState = {
+                    board: Array(9).fill(null).map((_,i)=>({id:i,p1:[],p2:[],owner:null,fog:false})),
+                    p1Hand: p1, p2Hand: p2,
+                    troops: td, tactics: tac,
+                    turn: 'p1', phase: 'PLAY',
+                    log: '战役开始！你先手。',
+                    winner: null
+                };
+                
+                updateState(newState, connection);
+            };
+
+            const updateState = (newState, connection = conn) => {
+                setG(newState); // Local update
+                setView('GAME');
+                if(connection) connection.send({type: 'STATE', payload: newState});
+            };
+
+            const processAction = (type, payload) => {
+                // Host 接收任何动作指令，计算新状态，然后广播
+                let s = JSON.parse(JSON.stringify(G)); // Deep copy
+                const activePlayer = s.turn;
+                const hand = activePlayer==='p1' ? s.p1Hand : s.p2Hand;
+                
+                if (type === 'PLAY') {
+                    const { cardIdx, slotIdx } = payload;
+                    const card = hand[cardIdx];
+                    const slot = s.board[slotIdx];
+
+                    // 简单规则校验
+                    if (slot.owner) return; 
+
+                    // 处理 Fog
+                    if(card.code === 'FOG') {
+                        slot.fog = true;
+                    } else {
+                        // 处理部队/万能
+                        slot[activePlayer].push(card);
+                    }
+                    
+                    // 移除手牌
+                    if(activePlayer==='p1') s.p1Hand.splice(cardIdx,1);
+                    else s.p2Hand.splice(cardIdx,1);
+
+                    // 结算判定
+                    const f1 = getRank(slot.p1, slot.fog);
+                    const f2 = getRank(slot.p2, slot.fog);
+                    if(slot.p1.length===3 && slot.p2.length===3) {
+                        const res = compare(f1, f2);
+                        if(res===1) slot.owner='p1';
+                        else if(res===-1) slot.owner='p2';
+                        else slot.owner = activePlayer==='p1'?'p2':'p1'; // 后手输
+                    }
+
+                    // 胜利判定
+                    const p1W = s.board.filter(b=>b.owner==='p1').length;
+                    const p2W = s.board.filter(b=>b.owner==='p2').length;
+                    if(p1W>=5) s.winner='p1';
+                    if(p2W>=5) s.winner='p2';
+
+                    s.phase = 'DRAW';
+                    s.log = '出牌完毕，请抽牌';
+                } 
+                
+                if (type === 'DRAW') {
+                    const { deckType } = payload; // 'TROOP' or 'TACTIC'
+                    const deck = deckType==='TROOP' ? s.troops : s.tactics;
+                    if(deck.length > 0) {
+                        const newCard = deck.shift();
+                        if(activePlayer==='p1') s.p1Hand.push(newCard);
+                        else s.p2Hand.push(newCard);
+                    }
+                    // 换回合
+                    s.turn = s.turn==='p1'?'p2':'p1';
+                    s.phase = 'PLAY';
+                    s.log = s.turn==='p1' ? '轮到 P1 行动' : '轮到 P2 行动';
+                }
+
+                updateState(s);
+            };
+
+            // --- Client Interaction ---
+            const myPlayerId = isHost ? 'p1' : 'p2';
+            const isMyTurn = G.turn === myPlayerId;
+
+            const onCardClick = (idx) => {
+                if(!isMyTurn || G.phase!=='PLAY') return;
+                setSelIdx(idx === selIdx ? null : idx);
+            };
+
+            const onSlotClick = (slotIdx) => {
+                if(!isMyTurn || G.phase!=='PLAY' || selIdx===null) return;
+                
+                // 发送动作给 Host
+                const action = {
+                    type: 'PLAY',
+                    payload: { cardIdx: selIdx, slotIdx }
+                };
+
+                if(isHost) processAction(action.type, action.payload);
+                else conn.send({type: 'ACTION', action: action, payload: action.payload});
+                
+                setSelIdx(null);
+            };
+
+            const onDrawClick = (deckType) => {
+                if(!isMyTurn || G.phase!=='DRAW') return;
+                const action = { type: 'DRAW', payload: { deckType } };
+                if(isHost) processAction(action.type, action.payload);
+                else conn.send({type: 'ACTION', action: action, payload: action.payload});
+            };
+
+            // --- Render ---
+            if(view === 'LOBBY') return <Lobby onCreate={()=>alert('请等待连接...')} onJoin={joinGame} status={status} myId={myId} />;
+
+            // 渲染手牌：只显示自己的，对手显示卡背
+            const myHand = myPlayerId==='p1' ? G.p1Hand : G.p2Hand;
+            const oppHandCount = myPlayerId==='p1' ? G.p2Hand.length : G.p1Hand.length;
+
+            return (
+                <div className="min-h-screen flex flex-col parchment select-none relative">
+                    {/* Header */}
+                    <div className="h-12 bg-black/80 flex items-center justify-between px-4 text-yellow-500 border-b border-yellow-800">
+                        <div className="font-bold">BATTLE LINE</div>
+                        <div className="text-sm animate-pulse">{G.winner ? 'GAME OVER' : (isMyTurn ? "👉 你的回合" : "⏳ 等待对手...")}</div>
+                        <div className="text-xs font-mono">{myPlayerId.toUpperCase()}</div>
+                    </div>
+
+                    {G.winner && (
+                        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-center">
+                            <h1 className="text-6xl mb-4">{G.winner===myPlayerId ? '🏆' : '💀'}</h1>
+                            <div className="text-4xl text-white font-bold mb-8">{G.winner===myPlayerId ? 'VICTORY' : 'DEFEAT'}</div>
+                            <button onClick={()=>window.location.reload()} className="bg-yellow-600 px-6 py-2 rounded text-white">Back to Lobby</button>
+                        </div>
+                    )}
+
+                    {/* Opponent Hand (Hidden) */}
+                    <div className="h-16 flex justify-center -space-x-2 mt-2 opacity-80">
+                        {Array(oppHandCount).fill(0).map((_,i)=><Card key={i} hidden />)}
+                    </div>
+
+                    {/* Board */}
+                    <div className="flex-1 flex items-center justify-center overflow-x-auto px-4">
+                        <div className="flex space-x-1">
+                            {G.board.map((slot, i) => (
+                                <div key={i} onClick={()=>onSlotClick(i)} className={`w-12 h-64 sm:w-16 sm:h-80 wood-texture rounded border-2 relative flex flex-col justify-between py-1 transition-all ${selIdx!==null && !slot.owner && isMyTurn ? 'border-yellow-400 cursor-pointer hover:brightness-110' : 'border-black'}`}>
+                                    {/* Fog */}
+                                    {slot.fog && <div className="absolute inset-0 bg-white/20 z-0 pointer-events-none flex items-center justify-center text-2xl">🌫️</div>}
+                                    
+                                    {/* P2 (Opponent) Cards - Reverse Order visually if needed, but flex-col works */}
+                                    <div className="flex flex-col space-y-[-1rem]">
+                                        {(myPlayerId==='p1' ? slot.p2 : slot.p1).map((c,idx)=><div key={idx} className="scale-75 origin-top"><Card c={c}/></div>)}
+                                    </div>
+
+                                    <div className="z-10 bg-black/70 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs self-center border border-yellow-600">
+                                        {slot.owner ? (slot.owner===myPlayerId ? '🔵' : '🔴') : i+1}
+                                    </div>
+
+                                    {/* P1 (My) Cards */}
+                                    <div className="flex flex-col-reverse space-y-[-1rem] space-y-reverse">
+                                        {(myPlayerId==='p1' ? slot.p1 : slot.p2).map((c,idx)=><div key={idx} className="scale-75 origin-bottom"><Card c={c}/></div>)}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Controls (Draw) */}
+                    {isMyTurn && G.phase==='DRAW' && (
+                        <div className="absolute top-1/2 right-2 transform -translate-y-1/2 flex flex-col gap-2 z-20">
+                            <button onClick={()=>onDrawClick('TROOP')} className="bg-red-900 border-2 border-yellow-500 w-16 h-20 rounded text-xs text-white shadow-lg hover:scale-110 transition animate-bounce">部队<br/>({G.troops.length})</button>
+                            <button onClick={()=>onDrawClick('TACTIC')} className="bg-slate-700 border-2 border-slate-400 w-16 h-20 rounded text-xs text-white shadow-lg hover:scale-110 transition">战术<br/>({G.tactics.length})</button>
+                        </div>
+                    )}
+
+                    {/* My Hand */}
+                    <div className="h-24 sm:h-32 flex justify-center items-end -space-x-2 mb-2 px-4 overflow-x-visible">
+                        {myHand.map((c,i)=>(
+                            <div key={i} className={`transition-transform duration-200 ${isMyTurn && G.phase==='PLAY' ? 'hover:-translate-y-4 cursor-pointer' : 'opacity-80'}`}>
+                                <Card c={c} onClick={()=>onCardClick(i)} sel={selIdx===i} />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<BattleLineGame />);
+    </script>
+</body>
+</html>
