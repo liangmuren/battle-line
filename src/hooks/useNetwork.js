@@ -12,16 +12,7 @@ export function useNetwork() {
   const onConnectedRef = useRef(null);   // (conn, isHost) => void
   const onDataRef = useRef(null);        // (data) => void
 
-  const handleConnection = useCallback((c, amIHost) => {
-    setConn(c);
-    setIsHost(amIHost);
-    setStatus('连接中...');
-
-    c.on('open', () => {
-      setStatus('已连接！');
-      if (onConnectedRef.current) onConnectedRef.current(c, amIHost);
-    });
-
+  const wireConnection = useCallback((c, amIHost) => {
     c.on('data', (data) => {
       if (onDataRef.current) onDataRef.current(data);
     });
@@ -29,6 +20,11 @@ export function useNetwork() {
     c.on('close', () => {
       alert('对方已断开');
       window.location.reload();
+    });
+
+    c.on('error', (err) => {
+      console.error('Connection error:', err);
+      setStatus('连接出错: ' + err.type);
     });
   }, []);
 
@@ -43,22 +39,51 @@ export function useNetwork() {
       setPeer(p);
     });
 
+    // Host: incoming connection from guest
     p.on('connection', (c) => {
-      handleConnection(c, true);
+      setConn(c);
+      setIsHost(true);
+      setStatus('对方已连接，正在初始化...');
+      wireConnection(c, true);
+      c.on('open', () => {
+        setStatus('已连接！');
+        if (onConnectedRef.current) onConnectedRef.current(c, true);
+      });
     });
 
     p.on('error', (err) => {
-      alert('连接错误: ' + err.type);
+      console.error('Peer error:', err);
+      setStatus('连接错误: ' + err.type);
+    });
+
+    p.on('disconnected', () => {
+      setStatus('信令服务器断开，尝试重连...');
+      p.reconnect();
     });
 
     return () => p.destroy();
-  }, [handleConnection]);
+  }, [wireConnection]);
 
   const joinGame = useCallback((hostId) => {
     if (!peer) return;
-    const c = peer.connect(hostId);
-    handleConnection(c, false);
-  }, [peer, handleConnection]);
+    setStatus('连接中...');
+    const c = peer.connect(hostId, { reliable: true });
+    setConn(c);
+    setIsHost(false);
+    wireConnection(c, false);
+
+    c.on('open', () => {
+      setStatus('已连接，等待游戏数据...');
+      if (onConnectedRef.current) onConnectedRef.current(c, false);
+    });
+
+    // Timeout: if not connected within 10s
+    setTimeout(() => {
+      if (!c.open) {
+        setStatus('连接超时，请检查代码是否正确，或刷新重试');
+      }
+    }, 10000);
+  }, [peer, wireConnection]);
 
   return {
     peer,
