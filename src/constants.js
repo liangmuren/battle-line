@@ -10,6 +10,15 @@ export const COLOR_MAP = {
   tactic: { bg: 'bg-slate-700',   text: 'text-slate-100',   border: 'border-slate-500' },
 };
 
+export const COMPACT_COLOR_MAP = {
+  red:    { bg: '#991b1b', text: '#fecaca', label: '红' },
+  orange: { bg: '#9a3412', text: '#fed7aa', label: '橙' },
+  yellow: { bg: '#854d0e', text: '#fef3c7', label: '黄' },
+  green:  { bg: '#166534', text: '#bbf7d0', label: '绿' },
+  blue:   { bg: '#1e3a8a', text: '#bfdbfe', label: '蓝' },
+  purple: { bg: '#581c87', text: '#e9d5ff', label: '紫' },
+};
+
 export const RANKS = {
   WEDGE: 5,     // 楔形 (straight flush)
   PHALANX: 4,   // 方阵 (three of a kind)

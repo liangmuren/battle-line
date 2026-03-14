@@ -24,18 +24,20 @@ const TACTIC_COLORS = {
   TRAITOR:  'text-purple-400',
 };
 
-export default function Card({ c, onClick, sel, target, dim }) {
+export default function Card({ c, onClick, sel, target, dim, variant }) {
+  const sizeClass = variant === 'hand' ? 'card-hand' : 'card-responsive';
+
   // Empty slot placeholder
   if (!c) {
     return (
-      <div className="card-responsive border-2 border-dashed border-gray-600 rounded bg-black/20" />
+      <div className={`${sizeClass} border-2 border-dashed border-gray-600 rounded bg-black/20`} />
     );
   }
 
   // Card back (no value and no code)
   if (!c.value && !c.code) {
     return (
-      <div className="card-responsive rounded border-2 bg-slate-800 border-slate-600 flex items-center justify-center card-shadow">
+      <div className={`${sizeClass} rounded border-2 bg-slate-800 border-slate-600 flex items-center justify-center card-shadow`}>
         <div className="text-[8px] text-white opacity-30 text-center">BATTLE<br />LINE</div>
       </div>
     );
@@ -45,8 +47,8 @@ export default function Card({ c, onClick, sel, target, dim }) {
   let cls = '';
   if (target) cls = 'glow-border cursor-crosshair z-50 animate-pulse';
   else if (dim) cls = 'opacity-30 grayscale pointer-events-none';
-  else if (sel) cls = '-translate-y-2 ring-2 ring-yellow-400 z-10';
-  else cls = 'hover:-translate-y-1';
+  else if (sel) cls = 'ring-2 ring-blue-400 z-10';
+  else cls = '';
 
   // Tactic card
   if (c.type === 'TACTIC') {
@@ -56,7 +58,7 @@ export default function Card({ c, onClick, sel, target, dim }) {
     return (
       <div
         onClick={() => onClick && onClick(c)}
-        className={`card-responsive rounded border-2 bg-slate-700 border-slate-400 text-slate-100 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow cursor-pointer ${cls}`}
+        className={`${sizeClass} rounded border-2 bg-slate-700 border-slate-400 text-slate-100 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow cursor-pointer ${cls}`}
       >
         <div className={`text-[7px] font-bold uppercase ${nameColor} mb-0.5 leading-tight text-center px-0.5`}>{c.name}</div>
         <div className="text-base leading-none">{icon}</div>
@@ -70,11 +72,11 @@ export default function Card({ c, onClick, sel, target, dim }) {
   return (
     <div
       onClick={() => onClick && onClick(c)}
-      className={`card-responsive rounded border-2 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow cursor-pointer ${st.bg} ${st.border} ${cls}`}
+      className={`${sizeClass} rounded border-2 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow cursor-pointer ${st.bg} ${st.border} ${cls}`}
     >
-      <div className="absolute top-0 left-1 text-[8px] text-white/80">{c.value}</div>
-      <div className={`text-xl font-bold font-roman ${st.text} drop-shadow`}>{c.value}</div>
-      <div className="absolute bottom-0 right-1 text-[8px] text-white/80">{c.value}</div>
+      <div className="absolute top-0.5 left-1 text-[9px] text-white/80">{c.value}</div>
+      <div className={`text-2xl font-bold font-roman ${st.text} drop-shadow`}>{c.value}</div>
+      <div className="absolute bottom-0.5 right-1 text-[9px] text-white/80">{c.value}</div>
     </div>
   );
 }
