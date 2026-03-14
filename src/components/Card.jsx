@@ -60,9 +60,9 @@ export default function Card({ c, onClick, sel, target, dim, variant }) {
         onClick={() => onClick && onClick(c)}
         className={`${sizeClass} rounded border-2 bg-slate-700 border-slate-400 text-slate-100 flex flex-col items-center justify-center relative transition-all duration-200 card-shadow cursor-pointer ${cls}`}
       >
-        <div className={`text-[7px] font-bold uppercase ${nameColor} mb-0.5 leading-tight text-center px-0.5`}>{c.name}</div>
-        <div className="text-base leading-none">{icon}</div>
-        <div className="text-[6px] text-slate-400 mt-0.5 text-center px-0.5 leading-tight">{c.desc}</div>
+        <div className={`text-[9px] font-bold uppercase ${nameColor} mb-0.5 leading-tight text-center px-0.5`}>{c.name}</div>
+        <div className="text-lg leading-none">{icon}</div>
+        <div className="text-[7px] text-slate-400 mt-0.5 text-center px-1 leading-tight">{c.desc}</div>
       </div>
     );
   }

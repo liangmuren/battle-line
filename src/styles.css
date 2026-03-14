@@ -27,14 +27,14 @@ body {
 
 /* Hand card sizes */
 .card-hand {
-  width: 3.5rem;
-  height: 5rem;
+  width: 4rem;
+  height: 5.6rem;
 }
 
 @media (min-width: 640px) {
   .card-hand {
-    width: 56px;
-    height: 78px;
+    width: 68px;
+    height: 96px;
   }
 }
 
@@ -53,12 +53,12 @@ body {
 
 /* Compact card row bars inside flags */
 .card-compact {
-  height: 22px;
-  border-radius: 3px;
+  height: 26px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: bold;
   cursor: default;
   transition: transform 0.15s, box-shadow 0.15s;

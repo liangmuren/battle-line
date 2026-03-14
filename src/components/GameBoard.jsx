@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Card from './Card';
 import { getRank, canClaim, isWild } from '../gameLogic';
 import { COMPACT_COLOR_MAP } from '../constants';
@@ -45,10 +45,11 @@ export default function GameBoard({
 }) {
   const oppSide = myPlayerId === 'p1' ? 'p2' : 'p1';
   const mySide = myPlayerId;
-  const [hoverCard, setHoverCard] = useState(null);
+  const [hoverCard, setHoverCard] = useState(null); // { card, rect }
+  const boardRef = useRef(null);
 
   return (
-    <div className="flex-1 flex items-center justify-center overflow-x-auto px-2 relative">
+    <div className="flex-1 flex items-center justify-center overflow-x-auto px-2 relative" ref={boardRef}>
       <div className="flex gap-1 sm:gap-1.5">
         {board.map((slot, i) => {
           const isTargetable =
@@ -81,8 +82,8 @@ export default function GameBoard({
             <div
               key={i}
               onClick={() => onSlotClick(i)}
-              className={`w-[72px] sm:w-[84px] wood-texture rounded-lg border-2 relative flex flex-col justify-between py-1.5 px-1 transition-all ${
-                slot.mud ? 'min-h-[310px] sm:min-h-[380px]' : 'min-h-[260px] sm:min-h-[320px]'
+              className={`w-[84px] sm:w-[96px] wood-texture rounded-lg border-2 relative flex flex-col justify-between py-1.5 px-1 transition-all ${
+                slot.mud ? 'min-h-[340px] sm:min-h-[420px]' : 'min-h-[280px] sm:min-h-[360px]'
               } ${borderCls} ${glowCls}`}
               style={bgStyle}
             >
@@ -106,7 +107,19 @@ export default function GameBoard({
                       key={idx}
                       card={c}
                       target={canTarget}
-                      onHover={() => setHoverCard({ slotIdx: i, side: 'opp', cardIdx: idx, card: c })}
+                      onHover={(e) => {
+                        const el = e.currentTarget;
+                        const boardEl = boardRef.current;
+                        if (!el || !boardEl) return;
+                        const elRect = el.getBoundingClientRect();
+                        const boardRect = boardEl.getBoundingClientRect();
+                        setHoverCard({
+                          card: c,
+                          x: elRect.right - boardRect.left + 8,
+                          y: elRect.top - boardRect.top,
+                          side: 'opp',
+                        });
+                      }}
                       onLeave={() => setHoverCard(null)}
                       onClick={(e) => {
                         if (canTarget) {
@@ -156,7 +169,19 @@ export default function GameBoard({
                       key={idx}
                       card={c}
                       target={canPickForRedeploy}
-                      onHover={() => setHoverCard({ slotIdx: i, side: 'my', cardIdx: idx, card: c })}
+                      onHover={(e) => {
+                        const el = e.currentTarget;
+                        const boardEl = boardRef.current;
+                        if (!el || !boardEl) return;
+                        const elRect = el.getBoundingClientRect();
+                        const boardRect = boardEl.getBoundingClientRect();
+                        setHoverCard({
+                          card: c,
+                          x: elRect.right - boardRect.left + 8,
+                          y: elRect.bottom - boardRect.top - 100,
+                          side: 'my',
+                        });
+                      }}
                       onLeave={() => setHoverCard(null)}
                       onClick={(e) => {
                         if (canPickForRedeploy) {
@@ -178,17 +203,16 @@ export default function GameBoard({
         })}
       </div>
 
-      {/* Hover popover — shows full card when hovering compact row */}
+      {/* Hover popover — shows full card next to hovered compact row */}
       {hoverCard && (
         <div
           className="card-popover"
           style={{
-            left: `${hoverCard.slotIdx * 86 + 90}px`,
-            top: hoverCard.side === 'opp' ? '20px' : 'auto',
-            bottom: hoverCard.side === 'my' ? '20px' : 'auto',
+            left: `${hoverCard.x}px`,
+            top: `${hoverCard.y}px`,
           }}
         >
-          <Card c={hoverCard.card} />
+          <Card c={hoverCard.card} variant="hand" />
         </div>
       )}
     </div>
