@@ -1,6 +1,6 @@
 # Battle Line Online
 
-基于 Reiner Knizia 经典桌游 **Battle Line** 的双人在线对战卡牌游戏。通过 WebRTC 点对点连接，无需服务器即可与朋友实时对战。
+基于 Reiner Knizia 经典桌游 **Battle Line** 的双人在线对战卡牌游戏。通过自建 WebSocket 中继服务器联机，支持断线重连。
 
 ## 游戏规则
 
@@ -45,16 +45,38 @@
 - **Vite** — 构建工具
 - **React 18** — UI 框架
 - **Tailwind CSS v4** — 样式
-- **PeerJS** — WebRTC 点对点网络
+- **WebSocket** — 自建中继服务器联机（`ws` 库）
 
 ## 快速开始
+
+### 1. 启动中继服务器
+
+```bash
+cd server
+npm install
+npm start
+```
+
+服务器默认监听 `3001` 端口，可通过 `PORT` 环境变量修改。
+
+### 2. 启动客户端
 
 ```bash
 npm install
 npm run dev
 ```
 
-打开浏览器访问本地地址，将你的联机代码发给朋友，对方输入代码即可连接对战。
+客户端默认连接 `ws://localhost:3001`。部署时在项目根目录创建 `.env` 文件配置服务器地址：
+
+```
+VITE_WS_URL=ws://your-server:3001
+```
+
+### 3. 开始游戏
+
+1. 一方点击 **创建房间**，获得 4 位房间代码
+2. 将代码发给朋友
+3. 朋友点击 **加入房间**，输入代码即可连接对战
 
 ## 构建
 
@@ -65,4 +87,6 @@ npm run preview
 
 ## 联机说明
 
-游戏使用 PeerJS 信令服务器建立 WebRTC 连接，需要网络连接。实际游戏数据通过点对点传输，低延迟无服务器依赖。
+- 游戏通过自建 WebSocket 中继服务器转发消息，Host 客户端为权威端
+- 支持断线自动重连（指数退避，最长 30 秒），刷新页面后可恢复对局
+- 房间 2 小时无活动自动清理
