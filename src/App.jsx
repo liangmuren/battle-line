@@ -27,6 +27,7 @@ export default function App() {
     onRedeployDiscard,
     initGame,
     processAction,
+    setActionLock,
   } = useGameState(conn, isHost);
 
   // Wire network callbacks to game state
@@ -41,11 +42,12 @@ export default function App() {
       if (data.type === 'STATE') {
         setG(data.payload);
         setView('GAME');
+        setActionLock(false);
       } else if (data.type === 'ACTION') {
         if (isHost) processAction(data.action.type, data.payload);
       }
     };
-  }, [onDataRef, isHost, processAction, setG, setView]);
+  }, [onDataRef, isHost, processAction, setG, setView, setActionLock]);
 
   if (view === 'LOBBY') {
     return (

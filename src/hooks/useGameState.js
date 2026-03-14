@@ -31,6 +31,7 @@ export function useGameState(conn, isHost) {
   // NORMAL | TARGET_OPP | TARGET_SLOT | SCOUT_RETURN | REDEPLOY_SRC | REDEPLOY_DEST
   const [pendingTactic, setPendingTactic] = useState(null);
   const [targetCard, setTargetCard] = useState(null);
+  const [actionLock, setActionLock] = useState(false);
 
   const stateRef = useRef(G);
   const connRef = useRef(conn);
@@ -42,6 +43,7 @@ export function useGameState(conn, isHost) {
     setG(newState);
     stateRef.current = newState;
     setView('GAME');
+    setActionLock(false);
     if (c) c.send({ type: 'STATE', payload: newState });
   }, []);
 
@@ -416,6 +418,7 @@ export function useGameState(conn, isHost) {
   const isMyTurn = G.turn === myPlayerId;
 
   const sendAction = useCallback((action) => {
+    setActionLock(true);
     if (isHost) {
       processAction(action.type, action.payload);
     } else if (connRef.current) {
@@ -459,7 +462,7 @@ export function useGameState(conn, isHost) {
 
     // --- Scout: immediately activate ---
     if (card.code === 'SCOUT') {
-      if (!canIPlayTactic) return;
+      if (!canIPlayTactic || actionLock) return;
       sendAction({ type: 'SCOUT', payload: { cardIdx: idx } });
       setSelIdx(null);
       setMode('NORMAL');
@@ -468,7 +471,7 @@ export function useGameState(conn, isHost) {
 
     // --- Redeploy: immediately activate ---
     if (card.code === 'REDEPLOY') {
-      if (!canIPlayTactic) return;
+      if (!canIPlayTactic || actionLock) return;
       sendAction({ type: 'REDEPLOY', payload: { cardIdx: idx } });
       setSelIdx(null);
       setMode('REDEPLOY_SRC');
@@ -479,11 +482,11 @@ export function useGameState(conn, isHost) {
     setPendingTactic(null);
     setTargetCard(null);
     setSelIdx(idx === selIdx ? null : idx);
-  }, [isMyTurn, G.phase, G.p1Hand, G.p2Hand, myPlayerId, selIdx, canIPlayTactic, sendAction]);
+  }, [isMyTurn, G.phase, G.p1Hand, G.p2Hand, myPlayerId, selIdx, canIPlayTactic, sendAction, actionLock]);
 
   /** Click on an opponent's card on a flag (for Traitor/Deserter) */
   const onOppCardClick = useCallback((slotIdx, cardIdx) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || actionLock) return;
 
     // Redeploy source: click own cards (handled in onMyCardOnFlagClick instead)
     if (mode === 'TARGET_OPP' && pendingTactic) {
@@ -510,11 +513,11 @@ export function useGameState(conn, isHost) {
         setMode('TARGET_SLOT');
       }
     }
-  }, [isMyTurn, mode, pendingTactic, G.board, myPlayerId, selIdx, sendAction]);
+  }, [isMyTurn, mode, pendingTactic, G.board, myPlayerId, selIdx, sendAction, actionLock]);
 
   /** Click on own card on a flag (for Redeploy source) */
   const onMyCardOnFlagClick = useCallback((slotIdx, cardIdx) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || actionLock) return;
 
     if (G.phase === 'REDEPLOY_SRC' || mode === 'REDEPLOY_SRC') {
       const slot = G.board[slotIdx];
@@ -529,11 +532,10 @@ export function useGameState(conn, isHost) {
       setMode('REDEPLOY_DEST');
       return;
     }
-  }, [isMyTurn, G.phase, G.board, myPlayerId, mode, sendAction]);
+  }, [isMyTurn, G.phase, G.board, myPlayerId, mode, sendAction, actionLock]);
 
-  /** Click on a flag slot */
   const onSlotClick = useCallback((slotIdx) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || actionLock) return;
 
     // Redeploy destination
     if (G.phase === 'REDEPLOY_DEST' || mode === 'REDEPLOY_DEST') {
@@ -580,11 +582,10 @@ export function useGameState(conn, isHost) {
       payload: { cardIdx: selIdx, slotIdx },
     });
     setSelIdx(null);
-  }, [isMyTurn, G.phase, G.board, mode, pendingTactic, targetCard, myPlayerId, selIdx, sendAction]);
+  }, [isMyTurn, G.phase, G.board, mode, pendingTactic, targetCard, myPlayerId, selIdx, sendAction, actionLock]);
 
-  /** Draw from a deck */
   const onDrawClick = useCallback((deckType) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || actionLock) return;
 
     // Scout draw phase
     if (G.phase === 'SCOUT_DRAW') {
@@ -602,21 +603,19 @@ export function useGameState(conn, isHost) {
 
     if (G.phase !== 'DRAW') return;
     sendAction({ type: 'DRAW', payload: { deckType } });
-  }, [isMyTurn, G.phase, selIdx, mode, sendAction]);
+  }, [isMyTurn, G.phase, selIdx, mode, sendAction, actionLock]);
 
-  /** Claim a flag */
   const onClaimClick = useCallback((slotIdx) => {
-    if (!isMyTurn || G.phase !== 'PLAY') return;
+    if (!isMyTurn || actionLock || G.phase !== 'PLAY') return;
     sendAction({ type: 'CLAIM', payload: { slotIdx } });
-  }, [isMyTurn, G.phase, sendAction]);
+  }, [isMyTurn, G.phase, sendAction, actionLock]);
 
-  /** Discard during Redeploy */
   const onRedeployDiscard = useCallback(() => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || actionLock) return;
     if (G.phase !== 'REDEPLOY_DEST' && mode !== 'REDEPLOY_DEST') return;
     sendAction({ type: 'REDEPLOY_DEST', payload: { discard: true } });
     setMode('NORMAL');
-  }, [isMyTurn, G.phase, mode, sendAction]);
+  }, [isMyTurn, G.phase, mode, sendAction, actionLock]);
 
   return {
     G,
@@ -640,5 +639,6 @@ export function useGameState(conn, isHost) {
     initGame,
     processAction,
     updateState,
+    setActionLock,
   };
 }
