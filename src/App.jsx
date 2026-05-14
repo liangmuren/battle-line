@@ -57,10 +57,15 @@ export default function App() {
         setView('GAME');
         setActionLock(false);
       } else if (data.type === 'ACTION') {
-        if (isHost) processAction(data.action.type, data.payload);
+        if (isHost) {
+          const ok = processAction(data.action.type, data.payload);
+          if (!ok && conn) {
+            conn.send({ type: 'STATE', payload: latestGRef.current });
+          }
+        }
       }
     };
-  }, [onDataRef, isHost, processAction, setG, setView, setActionLock]);
+  }, [onDataRef, isHost, conn, processAction, setG, setView, setActionLock]);
 
   if (view === 'LOBBY') {
     return (

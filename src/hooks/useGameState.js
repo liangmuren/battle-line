@@ -141,12 +141,12 @@ export function useGameState(conn, isHost) {
     if (type === 'PLAY') {
       const { cardIdx, slotIdx } = payload;
       const card = hand[cardIdx];
-      if (!card) return;
+      if (!card) return false;
       const slot = s.board[slotIdx];
-      if (slot.owner) return;
+      if (slot.owner) return false;
 
       // Tactic card limit check
-      if (card.type === 'TACTIC' && !canPlayTactic(s, activePlayer)) return;
+      if (card.type === 'TACTIC' && !canPlayTactic(s, activePlayer)) return false;
 
       // --- Environment tactics (Fog, Mud) — don't occupy card slot ---
       if (card.code === 'FOG') {
@@ -160,7 +160,7 @@ export function useGameState(conn, isHost) {
         s.winner = checkWinner(s.board);
         advanceToDraw(s);
         updateState(s);
-        return;
+        return true;
       }
 
       if (card.code === 'MUD') {
@@ -173,16 +173,16 @@ export function useGameState(conn, isHost) {
         s.winner = checkWinner(s.board);
         advanceToDraw(s);
         updateState(s);
-        return;
+        return true;
       }
 
       // --- Morale tactics (Traitor, Deserter, Scout, Redeploy) are handled by their own actions ---
       if (card.code === 'TRAITOR' || card.code === 'DESERTER' || card.code === 'SCOUT' || card.code === 'REDEPLOY') {
-        return;
+        return false;
       }
 
       // --- Troop or flag tactic (Leader, Cavalry, Shield) — place on the flag ---
-      if (slot[activePlayer].length >= flagLimit(slot)) return; // slot full
+      if (slot[activePlayer].length >= flagLimit(slot)) return false; // slot full
       slot[activePlayer].push(card);
       if (activePlayer === 'p1') s.p1Hand.splice(cardIdx, 1);
       else s.p2Hand.splice(cardIdx, 1);
@@ -195,6 +195,7 @@ export function useGameState(conn, isHost) {
       s.winner = checkWinner(s.board);
       advanceToDraw(s);
       updateState(s);
+      return true;
     }
 
     // ==================== DRAW ====================
@@ -210,19 +211,21 @@ export function useGameState(conn, isHost) {
       s.phase = 'PLAY';
       s.log = s.turn === 'p1' ? '轮到 P1 行动' : '轮到 P2 行动';
       updateState(s);
+      return true;
     }
 
     // ==================== CLAIM ====================
     if (type === 'CLAIM') {
       const { slotIdx } = payload;
       const slot = s.board[slotIdx];
-      if (slot.owner) return;
+      if (slot.owner) return false;
 
       if (canClaim(slot, activePlayer, s.board, s.discardPile)) {
         slot.owner = activePlayer;
         s.log = `${activePlayer === 'p1' ? 'P1' : 'P2'} 宣称了旗帜 ${slotIdx + 1}！`;
         s.winner = checkWinner(s.board);
         updateState(s);
+        return true;
       }
     }
 
@@ -233,14 +236,14 @@ export function useGameState(conn, isHost) {
       const destSlot = s.board[destSlotIdx];
       const oppSide = activePlayer === 'p1' ? 'p2' : 'p1';
 
-      if (srcSlot.owner || destSlot.owner) return;
-      if (!srcSlot[oppSide][srcCardIdx]) return;
+      if (srcSlot.owner || destSlot.owner) return false;
+      if (!srcSlot[oppSide][srcCardIdx]) return false;
       // Traitor can only steal troop cards
-      if (srcSlot[oppSide][srcCardIdx].type !== 'TROOP') return;
-      if (destSlot[activePlayer].length >= flagLimit(destSlot)) return;
+      if (srcSlot[oppSide][srcCardIdx].type !== 'TROOP') return false;
+      if (destSlot[activePlayer].length >= flagLimit(destSlot)) return false;
 
       // Tactic limit check
-      if (!canPlayTactic(s, activePlayer)) return;
+      if (!canPlayTactic(s, activePlayer)) return false;
 
       const [stolenCard] = srcSlot[oppSide].splice(srcCardIdx, 1);
       destSlot[activePlayer].push(stolenCard);
@@ -257,6 +260,7 @@ export function useGameState(conn, isHost) {
       advanceToDraw(s);
       s.log = '叛变！偷取了对方的卡牌';
       updateState(s);
+      return true;
     }
 
     // ==================== DESERTER ====================
@@ -265,11 +269,11 @@ export function useGameState(conn, isHost) {
       const srcSlot = s.board[srcSlotIdx];
       const oppSide = activePlayer === 'p1' ? 'p2' : 'p1';
 
-      if (srcSlot.owner) return;
-      if (!srcSlot[oppSide][srcCardIdx]) return;
+      if (srcSlot.owner) return false;
+      if (!srcSlot[oppSide][srcCardIdx]) return false;
 
       // Tactic limit check
-      if (!canPlayTactic(s, activePlayer)) return;
+      if (!canPlayTactic(s, activePlayer)) return false;
 
       const [removedCard] = srcSlot[oppSide].splice(srcCardIdx, 1);
       s.discardPile.push(removedCard);
@@ -284,6 +288,7 @@ export function useGameState(conn, isHost) {
       advanceToDraw(s);
       s.log = '逃兵！移除了对方的卡牌';
       updateState(s);
+      return true;
     }
 
     // ==================== SCOUT ====================
@@ -291,7 +296,7 @@ export function useGameState(conn, isHost) {
       const { cardIdx: handIdx } = payload;
 
       // Tactic limit check
-      if (!canPlayTactic(s, activePlayer)) return;
+      if (!canPlayTactic(s, activePlayer)) return false;
 
       const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
@@ -304,13 +309,14 @@ export function useGameState(conn, isHost) {
       s.scoutDrawsLeft = 3;
       s.log = '侦察兵！选择牌堆抽取3张牌';
       updateState(s);
+      return true;
     }
 
     // ==================== SCOUT_DRAW (draw one card at a time, 3 times) ====================
     if (type === 'SCOUT_DRAW') {
       const { deckType } = payload;
       const deck = deckType === 'TROOP' ? s.troops : s.tactics;
-      if (deck.length === 0) return;
+      if (deck.length === 0) return false;
 
       const newCard = deck.shift();
       if (activePlayer === 'p1') s.p1Hand.push(newCard);
@@ -325,13 +331,14 @@ export function useGameState(conn, isHost) {
         s.log = `再抽${s.scoutDrawsLeft}张牌`;
       }
       updateState(s);
+      return true;
     }
 
     // ==================== SCOUT_RETURN (return one card at a time, 2 times) ====================
     if (type === 'SCOUT_RETURN') {
       const { cardIdx: handIdx, deckType } = payload;
       const theHand = activePlayer === 'p1' ? s.p1Hand : s.p2Hand;
-      if (!theHand[handIdx]) return;
+      if (!theHand[handIdx]) return false;
 
       const [returnedCard] = theHand.splice(handIdx, 1);
       // Put on top of chosen deck
@@ -351,6 +358,7 @@ export function useGameState(conn, isHost) {
         s.log = `再还${s.scoutReturnsLeft}张牌`;
       }
       updateState(s);
+      return true;
     }
 
     // ==================== REDEPLOY ====================
@@ -358,7 +366,7 @@ export function useGameState(conn, isHost) {
       const { cardIdx: handIdx } = payload;
 
       // Tactic limit check
-      if (!canPlayTactic(s, activePlayer)) return;
+      if (!canPlayTactic(s, activePlayer)) return false;
 
       const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
@@ -370,15 +378,16 @@ export function useGameState(conn, isHost) {
       s.phase = 'REDEPLOY_SRC';
       s.log = '调遣！选择己方旗帜上的一张卡';
       updateState(s);
+      return true;
     }
 
     // ==================== REDEPLOY_SRC (pick a card from own flag) ====================
     if (type === 'REDEPLOY_SRC') {
       const { slotIdx, cardIdx: cardIdxInSlot } = payload;
       const slot = s.board[slotIdx];
-      if (slot.owner) return;
+      if (slot.owner) return false;
       const myCards = slot[activePlayer];
-      if (!myCards[cardIdxInSlot]) return;
+      if (!myCards[cardIdxInSlot]) return false;
 
       const [card] = myCards.splice(cardIdxInSlot, 1);
       s.redeployCard = card;
@@ -386,6 +395,7 @@ export function useGameState(conn, isHost) {
       s.phase = 'REDEPLOY_DEST';
       s.log = '选择目标旗帜放置，或弃掉该卡';
       updateState(s);
+      return true;
     }
 
     // ==================== REDEPLOY_DEST (place or discard) ====================
@@ -398,8 +408,8 @@ export function useGameState(conn, isHost) {
       } else {
         // Place on target flag
         const destSlot = s.board[slotIdx];
-        if (destSlot.owner) return;
-        if (destSlot[activePlayer].length >= flagLimit(destSlot)) return;
+        if (destSlot.owner) return false;
+        if (destSlot[activePlayer].length >= flagLimit(destSlot)) return false;
         destSlot[activePlayer].push(s.redeployCard);
         resolveFlag(destSlot, activePlayer);
       }
@@ -410,7 +420,10 @@ export function useGameState(conn, isHost) {
       advanceToDraw(s);
       s.log = '调遣完成';
       updateState(s);
+      return true;
     }
+
+    return false;
   }, [updateState]);
 
   // --- Client interaction ---
@@ -420,9 +433,12 @@ export function useGameState(conn, isHost) {
   const sendAction = useCallback((action) => {
     setActionLock(true);
     if (isHost) {
-      processAction(action.type, action.payload);
+      const ok = processAction(action.type, action.payload);
+      if (!ok) setActionLock(false);
     } else if (connRef.current) {
       connRef.current.send({ type: 'ACTION', action, payload: action.payload });
+    } else {
+      setActionLock(false);
     }
   }, [isHost, processAction]);
 
