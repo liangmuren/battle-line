@@ -1,6 +1,25 @@
 import { WebSocketServer } from 'ws';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLIENT_DIST_DIR = path.resolve(process.env.CLIENT_DIST_DIR || path.join(__dirname, '..', 'dist'));
+
+const MIME_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
 
 // Room: { host: ws|null, guest: ws|null, hostId, guestId, createdAt, lastActivity }
 const rooms = new Map();
@@ -23,6 +42,79 @@ function send(ws, msg) {
   }
 }
 
+function isValidPlayerId(playerId) {
+  return typeof playerId === 'string' && playerId.length > 0 && playerId.length <= 128;
+}
+
+function isValidRoomCode(roomCode) {
+  return typeof roomCode === 'string' && /^[A-Z]{4}$/i.test(roomCode);
+}
+
+function sendHttp(res, statusCode, body, headers = {}) {
+  res.writeHead(statusCode, headers);
+  res.end(body);
+}
+
+function resolveStaticFile(urlPath) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(urlPath.split('?')[0]);
+  } catch {
+    return null;
+  }
+  const requestedPath = pathname === '/' ? '/index.html' : pathname;
+  const resolved = path.resolve(CLIENT_DIST_DIR, `.${requestedPath}`);
+  const distRoot = CLIENT_DIST_DIR.endsWith(path.sep) ? CLIENT_DIST_DIR : `${CLIENT_DIST_DIR}${path.sep}`;
+
+  if (resolved !== CLIENT_DIST_DIR && !resolved.startsWith(distRoot)) {
+    return null;
+  }
+
+  if (existsSync(resolved) && statSync(resolved).isFile()) {
+    return resolved;
+  }
+
+  if (!path.extname(requestedPath)) {
+    const indexPath = path.join(CLIENT_DIST_DIR, 'index.html');
+    if (existsSync(indexPath)) return indexPath;
+  }
+
+  return null;
+}
+
+function handleHttpRequest(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    sendHttp(res, 405, 'Method Not Allowed', { Allow: 'GET, HEAD' });
+    return;
+  }
+
+  if ((req.url || '').split('?')[0] === '/healthz') {
+    sendHttp(res, 200, req.method === 'HEAD' ? '' : JSON.stringify({ ok: true }), {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    return;
+  }
+
+  const filePath = resolveStaticFile(req.url || '/');
+  if (!filePath) {
+    sendHttp(res, 404, 'Not Found', { 'Content-Type': 'text/plain; charset=utf-8' });
+    return;
+  }
+
+  const ext = path.extname(filePath);
+  const headers = {
+    'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+  };
+
+  if (req.method === 'HEAD') {
+    sendHttp(res, 200, '', headers);
+    return;
+  }
+
+  res.writeHead(200, headers);
+  createReadStream(filePath).pipe(res);
+}
+
 function getPartner(room, ws) {
   if (room.host === ws) return room.guest;
   if (room.guest === ws) return room.host;
@@ -30,6 +122,11 @@ function getPartner(room, ws) {
 }
 
 function handleCreate(ws, playerId) {
+  if (!isValidPlayerId(playerId)) {
+    send(ws, { type: 'ERROR', message: '玩家身份无效' });
+    return;
+  }
+
   // If player already in a room, remove old room
   cleanupPlayer(playerId);
 
@@ -59,6 +156,11 @@ function handleCreate(ws, playerId) {
 }
 
 function handleJoin(ws, roomCode, playerId) {
+  if (!isValidPlayerId(playerId) || !isValidRoomCode(roomCode)) {
+    send(ws, { type: 'ERROR', message: '房间号或玩家身份无效' });
+    return;
+  }
+
   const code = roomCode.toUpperCase();
   const room = rooms.get(code);
 
@@ -156,9 +258,19 @@ function handleRelay(ws, payload) {
   const room = rooms.get(code);
   if (!room) return;
 
+  // Only the authoritative host may publish state, and only the guest may
+  // submit actions. Sender role is server-derived; never trust client payload.
+  if (ws._role === 'host' && payload?.type !== 'STATE') return;
+  if (ws._role === 'guest' && payload?.type !== 'ACTION') return;
+
   room.lastActivity = Date.now();
   const partner = getPartner(room, ws);
-  send(partner, { type: 'RELAY', payload });
+  send(partner, {
+    type: 'RELAY',
+    fromRole: ws._role,
+    fromPlayerId: ws._playerId,
+    payload,
+  });
 }
 
 function handleDisconnect(ws) {
@@ -244,7 +356,8 @@ function setupCleanup() {
 }
 
 // --- Start server ---
-const wss = new WebSocketServer({ port: PORT });
+const httpServer = createServer(handleHttpRequest);
+const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
   ws._missedPongs = 0;
@@ -285,5 +398,8 @@ wss.on('connection', (ws) => {
 setupHeartbeat(wss);
 setupCleanup();
 
-console.log(`Battle Line relay server running on port ${PORT}`);
-console.log(`Rooms: 0 | Players: 0`);
+httpServer.listen(PORT, () => {
+  console.log(`Battle Line server running on port ${PORT}`);
+  console.log(`Serving client from ${CLIENT_DIST_DIR}`);
+  console.log(`Rooms: 0 | Players: 0`);
+});

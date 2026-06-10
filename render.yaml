@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: battle-line
+    runtime: node
+    plan: free
+    buildCommand: npm run deploy:build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production

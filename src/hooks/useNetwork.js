@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+export function getDefaultWsUrl(locationLike = globalThis.location) {
+  if (!locationLike) return 'ws://localhost:3001';
+
+  const protocol = locationLike.protocol === 'https:' ? 'wss:' : 'ws:';
+  const hostname = locationLike.hostname || 'localhost';
+  const host = locationLike.host || `${hostname}${locationLike.port ? `:${locationLike.port}` : ''}`;
+
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && locationLike.port === '5173') {
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return `${protocol}//${host}`;
+}
+
+const WS_URL = import.meta.env?.VITE_WS_URL || getDefaultWsUrl();
 
 function getPlayerId() {
   let id = sessionStorage.getItem('bl_playerId');
@@ -150,7 +164,11 @@ export function useNetwork() {
 
         case 'RELAY': {
           if (onDataRef.current && msg.payload) {
-            onDataRef.current(msg.payload);
+            onDataRef.current({
+              ...msg.payload,
+              __fromRole: msg.fromRole,
+              __fromPlayerId: msg.fromPlayerId,
+            });
           }
           break;
         }

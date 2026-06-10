@@ -23,6 +23,19 @@ const INITIAL_STATE = {
   redeploySourceSlot: null, // slot index the card was taken from
 };
 
+const ACTIONS_BY_PHASE = {
+  PLAY: new Set(['PLAY', 'CLAIM', 'TRAITOR', 'DESERTER', 'SCOUT', 'REDEPLOY']),
+  DRAW: new Set(['DRAW']),
+  SCOUT_DRAW: new Set(['SCOUT_DRAW']),
+  SCOUT_RETURN: new Set(['SCOUT_RETURN']),
+  REDEPLOY_SRC: new Set(['REDEPLOY_SRC']),
+  REDEPLOY_DEST: new Set(['REDEPLOY_DEST']),
+};
+
+export function isActionAllowedInPhase(phase, type) {
+  return ACTIONS_BY_PHASE[phase]?.has(type) || false;
+}
+
 export function useGameState(conn, isHost) {
   const [G, setG] = useState(INITIAL_STATE);
   const [view, setView] = useState('LOBBY');
@@ -133,17 +146,20 @@ export function useGameState(conn, isHost) {
   };
 
   const processAction = useCallback((type, payload) => {
+    if (!isActionAllowedInPhase(stateRef.current.phase, type)) return false;
+
     const s = JSON.parse(JSON.stringify(stateRef.current));
+    const safePayload = payload && typeof payload === 'object' ? payload : {};
     const activePlayer = s.turn;
     const hand = activePlayer === 'p1' ? s.p1Hand : s.p2Hand;
 
     // ==================== PLAY ====================
     if (type === 'PLAY') {
-      const { cardIdx, slotIdx } = payload;
+      const { cardIdx, slotIdx } = safePayload;
       const card = hand[cardIdx];
       if (!card) return false;
       const slot = s.board[slotIdx];
-      if (slot.owner) return false;
+      if (!slot || slot.owner) return false;
 
       // Tactic card limit check
       if (card.type === 'TACTIC' && !canPlayTactic(s, activePlayer)) return false;
@@ -200,7 +216,8 @@ export function useGameState(conn, isHost) {
 
     // ==================== DRAW ====================
     if (type === 'DRAW') {
-      const { deckType } = payload;
+      const { deckType } = safePayload;
+      if (deckType !== 'TROOP' && deckType !== 'TACTIC') return false;
       const deck = deckType === 'TROOP' ? s.troops : s.tactics;
       if (deck.length > 0) {
         const newCard = deck.shift();
@@ -216,9 +233,9 @@ export function useGameState(conn, isHost) {
 
     // ==================== CLAIM ====================
     if (type === 'CLAIM') {
-      const { slotIdx } = payload;
+      const { slotIdx } = safePayload;
       const slot = s.board[slotIdx];
-      if (slot.owner) return false;
+      if (!slot || slot.owner) return false;
 
       if (canClaim(slot, activePlayer, s.board, s.discardPile)) {
         slot.owner = activePlayer;
@@ -231,11 +248,14 @@ export function useGameState(conn, isHost) {
 
     // ==================== TRAITOR ====================
     if (type === 'TRAITOR') {
-      const { cardIdx: handIdx, srcSlotIdx, srcCardIdx, destSlotIdx } = payload;
+      const { cardIdx: handIdx, srcSlotIdx, srcCardIdx, destSlotIdx } = safePayload;
       const srcSlot = s.board[srcSlotIdx];
       const destSlot = s.board[destSlotIdx];
       const oppSide = activePlayer === 'p1' ? 'p2' : 'p1';
+      const tacticCard = hand[handIdx];
 
+      if (tacticCard?.code !== 'TRAITOR') return false;
+      if (!srcSlot || !destSlot) return false;
       if (srcSlot.owner || destSlot.owner) return false;
       if (!srcSlot[oppSide][srcCardIdx]) return false;
       // Traitor can only steal troop cards
@@ -248,7 +268,6 @@ export function useGameState(conn, isHost) {
       const [stolenCard] = srcSlot[oppSide].splice(srcCardIdx, 1);
       destSlot[activePlayer].push(stolenCard);
 
-      const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
       else s.p2Hand.splice(handIdx, 1);
       s.discardPile.push(tacticCard);
@@ -265,10 +284,13 @@ export function useGameState(conn, isHost) {
 
     // ==================== DESERTER ====================
     if (type === 'DESERTER') {
-      const { cardIdx: handIdx, srcSlotIdx, srcCardIdx } = payload;
+      const { cardIdx: handIdx, srcSlotIdx, srcCardIdx } = safePayload;
       const srcSlot = s.board[srcSlotIdx];
       const oppSide = activePlayer === 'p1' ? 'p2' : 'p1';
+      const tacticCard = hand[handIdx];
 
+      if (tacticCard?.code !== 'DESERTER') return false;
+      if (!srcSlot) return false;
       if (srcSlot.owner) return false;
       if (!srcSlot[oppSide][srcCardIdx]) return false;
 
@@ -278,7 +300,6 @@ export function useGameState(conn, isHost) {
       const [removedCard] = srcSlot[oppSide].splice(srcCardIdx, 1);
       s.discardPile.push(removedCard);
 
-      const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
       else s.p2Hand.splice(handIdx, 1);
       s.discardPile.push(tacticCard);
@@ -293,12 +314,13 @@ export function useGameState(conn, isHost) {
 
     // ==================== SCOUT ====================
     if (type === 'SCOUT') {
-      const { cardIdx: handIdx } = payload;
+      const { cardIdx: handIdx } = safePayload;
+      const tacticCard = hand[handIdx];
 
       // Tactic limit check
       if (!canPlayTactic(s, activePlayer)) return false;
+      if (tacticCard?.code !== 'SCOUT') return false;
 
-      const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
       else s.p2Hand.splice(handIdx, 1);
       s.discardPile.push(tacticCard);
@@ -314,7 +336,8 @@ export function useGameState(conn, isHost) {
 
     // ==================== SCOUT_DRAW (draw one card at a time, 3 times) ====================
     if (type === 'SCOUT_DRAW') {
-      const { deckType } = payload;
+      const { deckType } = safePayload;
+      if (deckType !== 'TROOP' && deckType !== 'TACTIC') return false;
       const deck = deckType === 'TROOP' ? s.troops : s.tactics;
       if (deck.length === 0) return false;
 
@@ -336,7 +359,8 @@ export function useGameState(conn, isHost) {
 
     // ==================== SCOUT_RETURN (return one card at a time, 2 times) ====================
     if (type === 'SCOUT_RETURN') {
-      const { cardIdx: handIdx, deckType } = payload;
+      const { cardIdx: handIdx, deckType } = safePayload;
+      if (deckType !== 'TROOP' && deckType !== 'TACTIC') return false;
       const theHand = activePlayer === 'p1' ? s.p1Hand : s.p2Hand;
       if (!theHand[handIdx]) return false;
 
@@ -363,12 +387,13 @@ export function useGameState(conn, isHost) {
 
     // ==================== REDEPLOY ====================
     if (type === 'REDEPLOY') {
-      const { cardIdx: handIdx } = payload;
+      const { cardIdx: handIdx } = safePayload;
+      const tacticCard = hand[handIdx];
 
       // Tactic limit check
       if (!canPlayTactic(s, activePlayer)) return false;
+      if (tacticCard?.code !== 'REDEPLOY') return false;
 
-      const tacticCard = hand[handIdx];
       if (activePlayer === 'p1') s.p1Hand.splice(handIdx, 1);
       else s.p2Hand.splice(handIdx, 1);
       s.discardPile.push(tacticCard);
@@ -383,9 +408,9 @@ export function useGameState(conn, isHost) {
 
     // ==================== REDEPLOY_SRC (pick a card from own flag) ====================
     if (type === 'REDEPLOY_SRC') {
-      const { slotIdx, cardIdx: cardIdxInSlot } = payload;
+      const { slotIdx, cardIdx: cardIdxInSlot } = safePayload;
       const slot = s.board[slotIdx];
-      if (slot.owner) return false;
+      if (!slot || slot.owner) return false;
       const myCards = slot[activePlayer];
       if (!myCards[cardIdxInSlot]) return false;
 
@@ -400,7 +425,8 @@ export function useGameState(conn, isHost) {
 
     // ==================== REDEPLOY_DEST (place or discard) ====================
     if (type === 'REDEPLOY_DEST') {
-      const { slotIdx, discard } = payload;
+      const { slotIdx, discard } = safePayload;
+      if (!s.redeployCard) return false;
 
       if (discard) {
         // Discard the card
@@ -408,7 +434,7 @@ export function useGameState(conn, isHost) {
       } else {
         // Place on target flag
         const destSlot = s.board[slotIdx];
-        if (destSlot.owner) return false;
+        if (!destSlot || destSlot.owner) return false;
         if (destSlot[activePlayer].length >= flagLimit(destSlot)) return false;
         destSlot[activePlayer].push(s.redeployCard);
         resolveFlag(destSlot, activePlayer);

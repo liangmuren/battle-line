@@ -53,12 +53,21 @@ export default function App() {
   useEffect(() => {
     onDataRef.current = (data) => {
       if (data.type === 'STATE') {
+        if (isHost || data.__fromRole !== 'host') return;
         setG(data.payload);
         setView('GAME');
         setActionLock(false);
       } else if (data.type === 'ACTION') {
         if (isHost) {
-          const ok = processAction(data.action.type, data.payload);
+          if (data.__fromRole !== 'guest' || latestGRef.current.turn !== 'p2') {
+            if (conn) conn.send({ type: 'STATE', payload: latestGRef.current });
+            return;
+          }
+          if (!data.action || typeof data.action.type !== 'string') {
+            if (conn) conn.send({ type: 'STATE', payload: latestGRef.current });
+            return;
+          }
+          const ok = processAction(data.action.type, data.action.payload);
           if (!ok && conn) {
             conn.send({ type: 'STATE', payload: latestGRef.current });
           }
