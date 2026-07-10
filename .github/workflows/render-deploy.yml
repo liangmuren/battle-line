@@ -1,0 +1,38 @@
+name: Deploy to Render
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_url:
+        description: 'Optional deployed URL to verify after triggering deploy'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        run: npm run deploy:build
+
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          test -n "$RENDER_DEPLOY_HOOK_URL"
+          curl --fail --show-error --silent "$RENDER_DEPLOY_HOOK_URL"
+
+      - name: Wait before smoke test
+        if: ${{ inputs.smoke_url != '' }}
+        run: sleep 90
+
+      - name: Smoke test deployed service
+        if: ${{ inputs.smoke_url != '' }}
+        run: npm run smoke:production -- "${{ inputs.smoke_url }}"
